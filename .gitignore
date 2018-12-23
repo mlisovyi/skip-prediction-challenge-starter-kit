@@ -1,0 +1,6 @@
+.ipynb_checkpoints/
+data/
+data_mini/
+out.log
+__pycache__/
+*.png
