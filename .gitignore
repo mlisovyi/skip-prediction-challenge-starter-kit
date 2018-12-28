@@ -4,3 +4,5 @@ data_mini/
 out.log
 __pycache__/
 *.png
+models/
+tmp/
