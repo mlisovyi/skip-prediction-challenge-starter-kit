@@ -29,15 +29,6 @@ aggs = OrderedDict([('context_switch', ['mean']),
         ('release_year', ['mean', 'max', 'min']),
                    ])
 
-# aggs = {'context_switch': ['mean'],
-#         'no_pause_before_play': ['mean'],
-#         'short_pause_before_play': ['mean'],
-#         'long_pause_before_play': ['mean'],
-#         'hist_user_behavior_is_shuffle': ['mean'],
-#         'duration': ['mean', 'max', 'min'],
-#         'us_popularity_estimate': ['mean', 'max', 'min'],
-#         'release_year': ['mean', 'max', 'min'],
-#        }
 for i in [1,2,3,4]:
     aggs['skip_{}'.format(i)] = ['mean']
     
