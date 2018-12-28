@@ -1,0 +1,8 @@
+v1 (0.549): all but vector data .csv.gz
+v2: same as v01, but .h5
+v2_m01 (0.548): only 1 or 2 files? Similar local evaluation score on outDD_v2_04
+v2_m02 (): 10 files. Local evaluation on outDD_v2_65: 0.557, but fluctuates
+v2_m03: debugging.
+v2_m04_Nf: found a bug in previous versions- dictionary order was not reproducable between training and prediction/evaluation. 
+Thus model was useless. Fixed. 
+Local 0.572..3. LB: 0.573
