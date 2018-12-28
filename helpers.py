@@ -17,15 +17,27 @@ warnings.simplefilter(action='ignore', category=Warning)
 import os, psutil
 import glob
 
-aggs = {'context_switch': ['mean'],
-        'no_pause_before_play': ['mean'],
-        'short_pause_before_play': ['mean'],
-        'long_pause_before_play': ['mean'],
-        'hist_user_behavior_is_shuffle': ['mean'],
-        'duration': ['mean', 'max', 'min'],
-        'us_popularity_estimate': ['mean', 'max', 'min'],
-        'release_year': ['mean', 'max', 'min'],
-       }
+from collections import OrderedDict
+
+aggs = OrderedDict([('context_switch', ['mean']),
+        ('no_pause_before_play', ['mean']),
+        ('short_pause_before_play', ['mean']),
+        ('long_pause_before_play', ['mean']),
+        ('hist_user_behavior_is_shuffle', ['mean']),
+        ('duration', ['mean', 'max', 'min']),
+        ('us_popularity_estimate', ['mean', 'max', 'min']),
+        ('release_year', ['mean', 'max', 'min']),
+                   ])
+
+# aggs = {'context_switch': ['mean'],
+#         'no_pause_before_play': ['mean'],
+#         'short_pause_before_play': ['mean'],
+#         'long_pause_before_play': ['mean'],
+#         'hist_user_behavior_is_shuffle': ['mean'],
+#         'duration': ['mean', 'max', 'min'],
+#         'us_popularity_estimate': ['mean', 'max', 'min'],
+#         'release_year': ['mean', 'max', 'min'],
+#        }
 for i in [1,2,3,4]:
     aggs['skip_{}'.format(i)] = ['mean']
     
@@ -62,10 +74,10 @@ col_dtype = {'context_switch': np.uint8,
                 }
 
 
-aggs_music_qualities = {}
+aggs_music_qualities = OrderedDict()
 for q in list_musik_qualities:
     if q != 'mode':
-        aggs_music_qualities[q] = ['mean', 'std']#, 'min', 'max']
+        aggs_music_qualities[q] = ['mean', 'std', 'min', 'max']
     else:
         aggs_music_qualities[q] = ['mean', 'std']
 
@@ -107,19 +119,20 @@ def evaluate_model(const_preds, y_truth_list):
 
 
 def evaluate_set_of_models(list_preds, y_truth_list, i_2fill=-2):
-    # transform predictions into a dataframe
-    tmp_preds_constant_mdl = pd.DataFrame({'pred_{}'.format(i): list_preds[i] for i in range(len(list_preds))}).astype(np.uint8)
-    # add a column with the residual desired length of complete session
-    tmp_preds_constant_mdl['len'] = y_truth_list.apply(len).values - len(list_preds)
-    # create a series with lists
-    preds_lists_stp = tmp_preds_constant_mdl.apply(lambda x: x.iloc[:-1].tolist() + [x.iloc[i_2fill]]*x['len'], axis=1)
-    del tmp_preds_constant_mdl
+    preds_lists_stp = pred_series_of_lists(list_preds, y_truth_list.apply(len), i_2fill)
+#     # transform predictions into a dataframe
+#     tmp_preds_constant_mdl = pd.DataFrame({'pred_{}'.format(i): list_preds[i] for i in range(len(list_preds))}).astype(np.uint8)
+#     # add a column with the residual desired length of complete session
+#     tmp_preds_constant_mdl['len'] = y_truth_list.apply(len).values - len(list_preds)
+#     # create a series with lists
+#     preds_lists_stp = tmp_preds_constant_mdl.apply(lambda x: x.iloc[:-1].tolist() + [x.iloc[i_2fill]]*x['len'], axis=1)
+#     del tmp_preds_constant_mdl
     return evaluate(preds_lists_stp.tolist(), y_truth_list.tolist())
 
 
 from scipy import stats
 
-def read_log(fin):
+def read_log(fin, cols_2read=[]):
     if fin.endswith('.csv') or fin.endswith('.csv.gz'):
         df_ = pd.read_csv(fin, dtype=col_dtype, nrows=None)
     elif fin.endswith('.h5'):
@@ -129,6 +142,8 @@ def read_log(fin):
     for c in ['hist_user_behavior_n_seekback', 'hist_user_behavior_n_seekfwd']:
         if c in df_.columns:
             df_.drop(c, axis=1, inplace=True)
+    if len(cols_2read) > 0:
+        df_ = df_[cols_2read]
     return df_
 
 def fe(df_):
@@ -175,8 +190,9 @@ def get_XY(df_, aggs_, reset_index=False, list_musik_qualities_=[], aggs_music_q
     X_trk = []
     X_trk_agg = {}
     # make track aggregates for skipped and not skipped tracks
-    skip_query = {'SKIP0': 'skip_2==0',
-                  'SKIP1': 'skip_2==1'}
+    skip_query = OrderedDict([('SKIP0', 'skip_2==0'),
+                              ('SKIP1', 'skip_2==1')
+                             ])
     for qname, query in skip_query.items():
         # skip and no-skip subsets
         df_tmp = df_X.query(query)
@@ -216,11 +232,13 @@ def get_XY(df_, aggs_, reset_index=False, list_musik_qualities_=[], aggs_music_q
 #     display(X_trn.head())
 
 #     X_median = (df_X.groupby('session_id')
-#                 ['duration', 'release_year', 'us_popularity_estimate',
-#                  'context_type', 'hist_user_behavior_reason_start',
+#                 [
 #                  'hist_user_behavior_reason_end'
 #                 ].agg(lambda x: stats.mode(x)[0][0])
-#                )
+#                ).rename('AGG_hist_user_behavior_reason_end_MEDIAN')
+#     X_trn = pd.concat([X_trn, X_median], axis=1)
+#     display(X_median.head())
+    
     # drop useless columns
     X_trn.drop(['session_position'], axis=1, inplace=True)
     
