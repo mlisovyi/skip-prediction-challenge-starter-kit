@@ -3,6 +3,34 @@
 
 [The link to the competition](https://www.crowdai.org/challenges/spotify-sequential-skip-prediction-challenge)
 
+# Short summary
+
+The approach chosen was to make a usual ML problem out of the challenge task. 
+Independent models are built for each tarck in the second half of the user session.
+Thus, such training does not directly optimise the competition metrics, 
+but aims to make good predictions for each individual track.
+
+The main issue was the size of the dataset, that is far too large to fit into memory on a local machine.
+For preprocessing `dask` was used to allow `pandas`-like processing but perform partitioned operations.
+For modelling, no good solution was found within limited timeframe.
+There are several frameworks that allow online learning, like:
+* [vowpal wabbit](https://github.com/VowpalWabbit/vowpal_wabbit/wiki/Learning-algorithm), 
+* [sklearn has several models, that implement `partial_fit()` method](https://scikit-learn.org/0.15/modules/scaling_strategies.html#incremental-learning),
+* [dask-ml has an `Incremental` wrapper around the sklearn models with `partial_fit` to run on a `dask.Array`](https://dask-ml.readthedocs.io/en/latest/incremental.html),
+* [XGBoost allows for processing with external memory](https://xgboost.readthedocs.io/en/latest/tutorials/external_memory.html),
+* [H2O has checkpointing mechanism, that allows to continue training any H20 model on new data](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/checkpointing-models.html). 
+This is slightly different from the other options, as it allows to adjust the model to changing patterns in the data,
+instead of finding a pattern in a larger volume of data.
+
+However, all of those have downsides: 
+* XGBoost and vowpal wabbit read directly files in specific format, which would mean dumping of processed features on disk with additional large disk space needed;
+* most of models with `partial_fit` are quite simple, which affects both dask-ml and sklearn.
+
+Due to lack of time non of those options was tried.
+Therefore modelling was restricted to in-memory training with a usual sklearn API in python.
+This restricts the amount of data that one can use.
+On the private laptop with the full set of features I was not able to go beyond 6 files.
+
 # Installation
 ```
 git clone https://github.com/mlisovyi/spotify_skip_prediction
