@@ -6,3 +6,6 @@ v2_m03: debugging.
 v2_m04_Nf: found a bug in previous versions- dictionary order was not reproducable between training and prediction/evaluation. 
 Thus model was useless. Fixed. 
 Local 0.572..3. LB: 0.573
+v2v4_m06i[0-4]_6f: Added acoustic vector (v4) and the Eukledian and cosine distance to the skip==1 and skip==0 mean vectors. 
+Produced several (5) models each based on 6 input files and averaged them to improve final predictions
+Local 0.0.5799. LB: - (submission came 5 minutes too late)
