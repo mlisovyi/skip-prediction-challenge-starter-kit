@@ -68,9 +68,16 @@ col_dtype = {'context_switch': np.uint8,
 aggs_music_qualities = OrderedDict()
 for q in list_musik_qualities:
     if q != 'mode':
-        aggs_music_qualities[q] = ['mean', 'std', 'min', 'max']
+        aggs_music_qualities[q] = ['mean', 'std']#, 'min', 'max']
     else:
         aggs_music_qualities[q] = ['mean', 'std']
+        
+        
+aggs_trkvec = OrderedDict()
+list_trkvec = []
+for i in range(8):
+    aggs_trkvec['acoustic_vector_{}'.format(i)] = ['mean']
+    list_trkvec.append('acoustic_vector_{}'.format(i))
 
 def evaluate(submission,groundtruth):
     ap_sum = 0.0
@@ -111,13 +118,6 @@ def evaluate_model(const_preds, y_truth_list):
 
 def evaluate_set_of_models(list_preds, y_truth_list, i_2fill=-2):
     preds_lists_stp = pred_series_of_lists(list_preds, y_truth_list.apply(len), i_2fill)
-#     # transform predictions into a dataframe
-#     tmp_preds_constant_mdl = pd.DataFrame({'pred_{}'.format(i): list_preds[i] for i in range(len(list_preds))}).astype(np.uint8)
-#     # add a column with the residual desired length of complete session
-#     tmp_preds_constant_mdl['len'] = y_truth_list.apply(len).values - len(list_preds)
-#     # create a series with lists
-#     preds_lists_stp = tmp_preds_constant_mdl.apply(lambda x: x.iloc[:-1].tolist() + [x.iloc[i_2fill]]*x['len'], axis=1)
-#     del tmp_preds_constant_mdl
     return evaluate(preds_lists_stp.tolist(), y_truth_list.tolist())
 
 
@@ -152,7 +152,10 @@ def get_halves_split(df_):
     return df_[is_first_half], df_[~is_first_half]
     
 
-def get_XY(df_, aggs_, reset_index=False, list_musik_qualities_=[], aggs_music_qualities_={}, i_=0):
+def get_XY(df_, aggs_, reset_index=False, 
+           list_musik_qualities_=[], aggs_music_qualities_={}, 
+           i_=0, 
+           aggs_trkvec_=None, list_trkvec_=None):
     is_tst = False
     if type(df_) == pd.DataFrame:
         df_X, df_y = get_halves_split(df_)
@@ -190,6 +193,11 @@ def get_XY(df_, aggs_, reset_index=False, list_musik_qualities_=[], aggs_music_q
         # track-quality aggs
         X_agg_tmp = df_tmp.groupby('session_id').agg(aggs_music_qualities_).astype(np.float32)
         X_agg_tmp.columns = pd.Index(['AGG_' + e[0] + "_" + e[1].upper() for e in X_agg_tmp.columns])
+        # track-vec aggs
+        if aggs_trkvec_ is not None:
+            X_vec_tmp = df_tmp.groupby('session_id').agg(aggs_trkvec_).astype(np.float32)
+            X_vec_tmp.columns = pd.Index(['AGG_' + e[0] + "_" + e[1].upper() for e in X_vec_tmp.columns])
+            X_agg_tmp = pd.concat([X_agg_tmp, X_vec_tmp], axis=1)
         # store the dataframe with aggregates
         X_trk_agg[qname] = X_agg_tmp
         del df_tmp
@@ -211,14 +219,45 @@ def get_XY(df_, aggs_, reset_index=False, list_musik_qualities_=[], aggs_music_q
                         X_nth_trk['{}_diff_{}'.format(c, qname)] = X_agg_tmp[c] - df_y_nth[q]
                         if c.endswith('_MEAN'):
                             X_nth_trk['{}_sign_{}'.format(c, qname)] = X_nth_trk['{}_diff_{}'.format(c, qname)] / X_agg_tmp[c[:-5]+'_STD']
-                del X_agg_tmp
             # add a column with a difference between SKIP0 and SKIP1 aggregate differences
             cols_track_diff = [c for c in X_nth_trk.columns if c.endswith('_SKIP0')]
             for c in cols_track_diff:
                 name_base = c[:-6]
                 X_nth_trk[name_base+'_SKIPDIFF'] = X_nth_trk[name_base+'_SKIP0'] - X_nth_trk[name_base+'_SKIP1']
+            
+        # calculate vec distances    
+        if list_trkvec_:
+            for qname, query in skip_query.items():
+                X_agg_tmp = X_trk_agg[qname]
+                col_dist = 'AGG_acoustic_vector_DIST_{}'.format(qname)
+                X_nth_trk[col_dist] = 0
+                col_cos = 'AGG_acoustic_vector_COS_{}'.format(qname)
+                X_nth_trk[col_cos] = 0
+                for v_i in list_trkvec_:
+                    cols_q_agg = [c for c in X_agg_tmp.columns if c.startswith('AGG_'+v_i) and c.endswith('_MEAN')]
+                    for c in cols_q_agg:
+                        # cumulative distance over components
+                        X_nth_trk[col_dist] += ((X_agg_tmp[c] - df_y_nth[v_i])**2)
+                        # cumulative dot product over components
+                        X_nth_trk[col_cos] += (X_agg_tmp[c]*df_y_nth[v_i])
+                # get sqrt of the distance square
+                X_nth_trk[col_dist] = np.sqrt(X_nth_trk[col_dist])
+                X_nth_trk[col_dist] = X_nth_trk[col_dist].astype(np.float16)
+                # normalse cosine similarity
+                cols_agg_trkvec = ['AGG_'+ v_i + '_MEAN' for v_i in list_trkvec_]
+                X_nth_trk[col_cos] = X_nth_trk[col_cos] / np.sqrt(np.sum(np.square(X_agg_tmp[cols_agg_trkvec]), axis=1))
+                X_nth_trk[col_cos] = X_nth_trk[col_cos] / np.sqrt(np.sum(np.square(df_y_nth[list_trkvec_]), axis=1))
+                X_nth_trk[col_cos] = X_nth_trk[col_cos].astype(np.float16)
                 
-            X_trk.append(X_nth_trk)
+            # add a column with a difference between SKIP0 and SKIP1 aggregate differences
+            cols_track_diff = [c for c in X_nth_trk.columns if c.endswith('_SKIP0')]
+            for c in cols_track_diff:
+                name_base = c[:-6]
+                X_nth_trk[name_base+'_SKIPDIFF'] = X_nth_trk[name_base+'_SKIP0'].fillna(-2) - X_nth_trk[name_base+'_SKIP1'].fillna(-2)
+                
+        X_trk.append(X_nth_trk)
+    # cleanup
+    del X_trk_agg
         
 #     display(X_trn.head())
 
@@ -239,9 +278,9 @@ def get_XY(df_, aggs_, reset_index=False, list_musik_qualities_=[], aggs_music_q
         X_trn.index = pd.RangeIndex(start=0, stop=len(X_trn))
         for y in y_trn:
 #             if not is_tst:
-            y.index = pd.RangeIndex(start=0, stop=len(X_trn))
+            y.index = pd.RangeIndex(start=0, stop=len(y))
         for X in X_trk:
-            X.index = pd.RangeIndex(start=0, stop=len(X_trn))
+            X.index = pd.RangeIndex(start=0, stop=len(X))
     
     del df_y
     
@@ -275,4 +314,9 @@ def pred_series_of_lists(list_preds, y_length, i_2fill=-2):
     # create a series with lists
     series_of_lists = tmp_preds_constant_mdl.apply(lambda x: x.iloc[:-1].tolist() + [x.iloc[i_2fill]]*x['len'], axis=1)
     del tmp_preds_constant_mdl
+    # handle short sessions (5 is magic number, since session length starts with 5*2)
+    if len(list_preds)>5:
+        for i in range(5,len(list_preds)):
+            too_short_session = (y_length.values == i)
+            series_of_lists.loc[too_short_session] = series_of_lists.loc[too_short_session].apply(lambda x: x[:i])
     return series_of_lists
